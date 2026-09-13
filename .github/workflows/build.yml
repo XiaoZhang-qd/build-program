@@ -18,15 +18,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git make curl tar xz-utils dpkg-dev libxml2-utils
 
-      - name: Clone Theos
+      - name: Clone and install Theos
         run: |
-          git clone --recursive https://github.com/theos/theos.git $THEOS
-          $THEOS/bin/install-theos
-          $THEOS/bin/install-sdk latest
+          git clone --recursive https://github.com/theos/theos.git "$THEOS"
+          # Theos scripts may lose their executable bit when cloned in some environments.
+          chmod +x "$THEOS/bin/install-theos" "$THEOS/bin/install-sdk"
+          "$THEOS/bin/install-theos"
+          "$THEOS/bin/install-sdk" latest
 
       - name: Compile C code to IPA
         run: |
-          export THEOS=${{ env.THEOS }}
+          export THEOS="${{ env.THEOS }}"
           make clean
           make package FINALPACKAGE=1 PACKAGE_FORMAT=ipa
 
