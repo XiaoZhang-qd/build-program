@@ -19,15 +19,19 @@ jobs:
           sudo apt-get install -y git make curl tar xz-utils dpkg-dev libxml2-utils
 
       - name: Clone and install Theos
+        shell: bash
         run: |
+          set -e
           git clone --recursive https://github.com/theos/theos.git "$THEOS"
-          # Theos scripts may lose their executable bit when cloned in some environments.
-          chmod +x "$THEOS/bin/install-theos" "$THEOS/bin/install-sdk"
-          "$THEOS/bin/install-theos"
-          "$THEOS/bin/install-sdk" latest
+          # Upstream Theos installer scripts may not have the executable bit.
+          # Invoke them explicitly through bash so GitHub Actions does not fail with exit 126.
+          bash "$THEOS/bin/install-theos"
+          bash "$THEOS/bin/install-sdk" latest
 
       - name: Compile C code to IPA
+        shell: bash
         run: |
+          set -e
           export THEOS="${{ env.THEOS }}"
           make clean
           make package FINALPACKAGE=1 PACKAGE_FORMAT=ipa
