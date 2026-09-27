@@ -1,0 +1,61 @@
+name: IDTerm iOS Terminal
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'IDTerm/**'
+      - 'IDTermDylib/**'
+      - '.github/workflows/idterm.yaml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          xcodebuild -version
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          echo "SDK=$SDK" >> "$GITHUB_ENV"
+
+      - name: Build IPA and dylib
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf build Payload IDTerm.ipa
+          mkdir -p build/Payload/IDTerm.app
+
+          clang -arch arm64 -isysroot "$SDK" -miphoneos-version-min=15.0             -fobjc-arc -fmodules -framework UIKit -framework Foundation             IDTerm/main.m -o build/Payload/IDTerm.app/IDTerm
+
+          cp IDTerm/Info.plist build/Payload/IDTerm.app/Info.plist
+          clang -arch arm64 -isysroot "$SDK" -miphoneos-version-min=15.0             -fobjc-arc -dynamiclib -framework Foundation             IDTermDylib/IDTermDylib.m -o build/IDTermDylib.dylib             -install_name @rpath/IDTermDylib.dylib
+
+          # Ad-hoc signatures make the artifacts structurally installable;
+          # the user's signing tool/account must be used for actual device installation.
+          codesign --force --sign - --timestamp=none build/Payload/IDTerm.app
+          codesign --force --sign - --timestamp=none build/IDTermDylib.dylib
+
+          cd build
+          zip -qry ../IDTerm.ipa Payload
+          cd ..
+
+          file IDTerm.ipa build/IDTermDylib.dylib
+          unzip -l IDTerm.ipa
+          otool -L build/IDTermDylib.dylib
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: idterm-v1.0.0-${{ github.run_number }}
+          name: IDTerm iOS Terminal v1.0.0 (build ${{ github.run_number }})
+          generate_release_notes: true
+          files: |
+            IDTerm.ipa
+            build/IDTermDylib.dylib
+            README-IDTerm.md
