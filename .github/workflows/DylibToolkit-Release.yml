@@ -1,0 +1,41 @@
+name: Build Dylib Toolkit Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, e.g. 1.0.0"
+        required: true
+        default: "1.0.0"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Dylib Toolkit
+        run: |
+          cd DylibToolkit
+          make clean || true
+          make
+          file DylibToolkit.dylib
+          codesign -dvvv DylibToolkit.dylib 2>&1 || true
+
+      - name: Create ZIP
+        run: |
+          mkdir -p release
+          cp DylibToolkit/DylibToolkit.dylib release/
+          cp DylibToolkit/README.md release/
+          cd release
+          zip -r ../DylibToolkit-${{ inputs.version }}.zip .
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "DylibToolkit-v${{ inputs.version }}"             "DylibToolkit-${{ inputs.version }}.zip"             --title "Dylib Toolkit v${{ inputs.version }}"             --generate-notes
