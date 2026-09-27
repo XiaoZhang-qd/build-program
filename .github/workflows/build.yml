@@ -26,7 +26,14 @@ jobs:
           # Upstream Theos installer scripts may not have the executable bit.
           # Invoke them explicitly through bash so GitHub Actions does not fail with exit 126.
           bash "$THEOS/bin/install-theos"
-          bash "$THEOS/bin/install-sdk" latest
+          # install-theos may already provide an iPhoneOS SDK.
+          # Reinstalling an existing SDK makes install-sdk exit with code 5.
+          if find "$THEOS/sdks" -maxdepth 1 -type d -name 'iPhoneOS*.sdk' -print -quit | grep -q .; then
+            echo "iPhoneOS SDK already exists; skipping install-sdk."
+            find "$THEOS/sdks" -maxdepth 1 -type d -name 'iPhoneOS*.sdk' -print | sort
+          else
+            bash "$THEOS/bin/install-sdk" latest
+          fi
 
       - name: Compile C code to IPA
         shell: bash
