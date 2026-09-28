@@ -1,131 +1,41 @@
 #import <UIKit/UIKit.h>
-#include <spawn.h>
-#include <sys/wait.h>
+#import <Foundation/Foundation.h>
+#include <sys/utsname.h>
+#include <pwd.h>
 #include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <signal.h>
-extern char **environ;
-
-static NSString *runShell(NSString *command) {
-    int pipefd[2];
-    if (pipe(pipefd) != 0) return [NSString stringWithFormat:@"pipe: %s\n", strerror(errno)];
-    pid_t pid = 0;
-    const char *sh = "/bin/sh";
-    char *const argv[] = {"sh", "-c", (char *)command.UTF8String, NULL};
-
-    posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-    posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO);
-    posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDERR_FILENO);
-    posix_spawn_file_actions_addclose(&actions, pipefd[0]);
-    posix_spawn_file_actions_addclose(&actions, pipefd[1]);
-
-    int rc = posix_spawn(&pid, sh, &actions, NULL, argv, environ);
-    posix_spawn_file_actions_destroy(&actions);
-    close(pipefd[1]);
-    if (rc != 0) {
-        close(pipefd[0]);
-        return [NSString stringWithFormat:@"posix_spawn: %s\n", strerror(rc)];
-    }
-
-    NSMutableData *data = [NSMutableData data];
-    char buf[4096]; ssize_t n;
-    while ((n = read(pipefd[0], buf, sizeof(buf))) > 0) [data appendBytes:buf length:(NSUInteger)n];
-    close(pipefd[0]);
-    int status = 0; waitpid(pid, &status, 0);
-
-    NSString *out = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-    if (!out) out = [[NSString alloc] initWithData:data encoding:NSISOLatin1StringEncoding];
-    if (!out) out = @"<non-text output>\n";
-    if (WIFEXITED(status) && WEXITSTATUS(status) != 0) out = [out stringByAppendingFormat:@"\n[exit %d]\n", WEXITSTATUS(status)];
-    if (WIFSIGNALED(status)) out = [out stringByAppendingFormat:@"\n[killed by signal %d]\n", WTERMSIG(status)];
-    return out;
-}
-
-@interface TerminalVC : UIViewController <UITextFieldDelegate>
-@property(nonatomic,strong) UITextView *output;
-@property(nonatomic,strong) UITextField *input;
-@end
-
+static NSString *safePath(NSString *path,NSString *cwd){if(!path.length)path=@".";
+NSString*p=[path hasPrefix:@"/"]?path:[cwd stringByAppendingPathComponent:path];p=[p stringByStandardizingPath];NSString*h=[NSHomeDirectory() stringByStandardizingPath];
+return([p isEqual:h]||[p hasPrefix:[h stringByAppendingString:@"/"]])?p:nil;}
+static NSArray *argsFor(NSString*l){NSMutableArray*a=[NSMutableArray array];NSMutableString*c=[NSMutableString string];BOOL q=NO,e=NO;unichar qc=0;
+for(NSUInteger i=0;i<l.length;i++){unichar x=[l characterAtIndex:i];if(e){[c appendFormat:@"%C",x];e=NO;continue;}if(x=='\\'){e=YES;continue;}if(q){if(x==qc)q=NO;else[c appendFormat:@"%C",x];continue;}if(x=='"'||x=='\\''){q=YES;qc=x;continue;}if([[NSCharacterSet whitespaceAndNewlineCharacterSet]characterIsMember:x]){if(c.length){[a addObject:c.copy];[c setString:@""];}}else[c appendFormat:@"%C",x];}if(c.length)[a addObject:c.copy];return a;}
+static NSString *joinArgs(NSArray*a,NSUInteger n){return n>=a.count?@"":[[a subarrayWithRange:NSMakeRange(n,a.count-n)]componentsJoinedByString:@" "];}
+static NSString *runCommand(NSString*l,NSString**cwd,BOOL*quit){NSArray*a=argsFor(l);if(!a.count)return @"";NSString*cmd=a[0];NSFileManager*f=NSFileManager.defaultManager;NSString*b=*cwd;
+if([cmd isEqual:@"help"])return @"Commands: help clear pwd ls cd cat mkdir touch rm cp mv echo uname whoami id env date system bundle httpget pbcopy pbpaste exit\nNative sandbox terminal; no arbitrary /bin/sh.\n";
+if([cmd isEqual:@"clear"])return @"\f";if([cmd isEqual:@"exit"]){*quit=YES;return @"logout\n";}if([cmd isEqual:@"pwd"])return b;
+if([cmd isEqual:@"cd"]){NSString*p=safePath(a.count>1?a[1]:NSHomeDirectory(),b);BOOL d=NO;if(!p||![f fileExistsAtPath:p isDirectory:&d]||!d)return @"cd: no such directory\n";*cwd=p;return @"";}
+if([cmd isEqual:@"ls"]){NSString*p=safePath(a.count>1?a[1]:@".",b);if(!p)return @"ls: permission denied\n";NSError*e=nil;NSArray*x=[f contentsOfDirectoryAtPath:p error:&e];if(!x)return[NSString stringWithFormat:@"ls: %@\n",e.localizedDescription];return[[x sortedArrayUsingSelector:@selector(localizedStandardCompare:)]componentsJoinedByString:@"\n"];}
+if([cmd isEqual:@"cat"]){if(a.count<2)return @"cat: missing operand\n";NSString*p=safePath(a[1],b);if(!p)return @"cat: permission denied\n";NSData*d=[NSData dataWithContentsOfFile:p options:0 error:nil];if(!d)return @"cat: cannot read file\n";if(d.length>1048576)return @"cat: file exceeds 1 MiB display limit\n";NSString*s=[[NSString alloc]initWithData:d encoding:NSUTF8StringEncoding];return s?:[NSString stringWithFormat:@"<binary: %lu bytes>\n",(unsigned long)d.length];}
+if([cmd isEqual:@"mkdir"]||[cmd isEqual:@"touch"]){if(a.count<2)return[NSString stringWithFormat:@"%@: missing operand\n",cmd];NSString*p=safePath(a[1],b);if(!p)return @"permission denied\n";NSError*e=nil;BOOL ok;if([cmd isEqual:@"mkdir"])ok=[f createDirectoryAtPath:p withIntermediateDirectories:YES attributes:nil error:&e];else ok=[f fileExistsAtPath:p]||[f createFileAtPath:p contents:[NSData data] attributes:nil];return ok?@"":[NSString stringWithFormat:@"%@: %@\n",cmd,e.localizedDescription?:@"cannot create"];}
+if([cmd isEqual:@"rm"]){if(a.count<2)return @"rm: missing operand\n";NSString*p=safePath(a[1],b);if(!p||[p isEqual:NSHomeDirectory()])return @"rm: permission denied\n";NSError*e=nil;return[f removeItemAtPath:p error:&e]?@"":[NSString stringWithFormat:@"rm: %@\n",e.localizedDescription];}
+if([cmd isEqual:@"cp"]||[cmd isEqual:@"mv"]){if(a.count<3)return[NSString stringWithFormat:@"%@: usage: %@ SOURCE DEST\n",cmd,cmd];NSString*s=safePath(a[1],b),*d=safePath(a[2],b);if(!s||!d)return @"permission denied\n";NSError*e=nil;BOOL ok=[cmd isEqual:@"cp"]?[f copyItemAtPath:s toPath:d error:&e]:[f moveItemAtPath:s toPath:d error:&e];return ok?@"":[NSString stringWithFormat:@"%@: %@\n",cmd,e.localizedDescription];}
+if([cmd isEqual:@"echo"])return joinArgs(a,1);if([cmd isEqual:@"uname"]){struct utsname u;uname(&u);return[NSString stringWithFormat:@"%s %s %s %s %s\n",u.sysname,u.nodename,u.release,u.version,u.machine];}
+if([cmd isEqual:@"whoami"]){struct passwd*p=getpwuid(getuid());return[NSString stringWithFormat:@"%s (uid=%d)\n",p?p->pw_name:"unknown",getuid()];}
+if([cmd isEqual:@"id"])return[NSString stringWithFormat:@"uid=%d gid=%d\n",getuid(),getgid()];if([cmd isEqual:@"env"])return[NSProcessInfo.processInfo.environment description];if([cmd isEqual:@"date"])return[[NSDate date]descriptionWithLocale:NSLocale.currentLocale];
+if([cmd isEqual:@"system"]){UIDevice*d=UIDevice.currentDevice;NSProcessInfo*p=NSProcessInfo.processInfo;return[NSString stringWithFormat:@"Device: %@\nSystem: %@ %@\nCPU: %lu\nMemory: %.1f MiB\nHome: %@\nDocuments: %@\nTemp: %@\n",d.model,d.systemName,d.systemVersion,(unsigned long)p.processorCount,(double)p.physicalMemory/1048576.0,NSHomeDirectory(),[f URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject.path,NSTemporaryDirectory()];}
+if([cmd isEqual:@"bundle"])return[NSString stringWithFormat:@"Bundle: %@\nID: %@\nVersion: %@ (%@)\n",NSBundle.mainBundle.bundlePath,NSBundle.mainBundle.bundleIdentifier,NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"],NSBundle.mainBundle.infoDictionary[@"CFBundleVersion"]];
+if([cmd isEqual:@"pbcopy"]){UIPasteboard.generalPasteboard.string=joinArgs(a,1);return @"copied\n";}if([cmd isEqual:@"pbpaste"])return UIPasteboard.generalPasteboard.string?:@"";
+if([cmd isEqual:@"httpget"]){if(a.count<2)return @"httpget: usage: httpget URL\n";NSURL*u=[NSURL URLWithString:a[1]];if(!u)return @"httpget: invalid URL\n";NSError*e=nil;NSData*d=[NSData dataWithContentsOfURL:u options:NSDataReadingMappedIfSafe error:&e];if(!d)return[NSString stringWithFormat:@"httpget: %@\n",e.localizedDescription?:@"request failed"];if(d.length>65536)d=[d subdataWithRange:NSMakeRange(0,65536)];NSString*s=[[NSString alloc]initWithData:d encoding:NSUTF8StringEncoding];return s?:[NSString stringWithFormat:@"<binary response: %lu bytes>\n",(unsigned long)d.length];}
+return[NSString stringWithFormat:@"%@: command not found (use 'help')\n",cmd];}
+@interface TerminalVC:UIViewController<UITextFieldDelegate>@property(nonatomic,strong)UITextView*output;@property(nonatomic,strong)UITextField*input;@property(nonatomic,copy)NSString*cwd;@end
 @implementation TerminalVC
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    self.view.backgroundColor = UIColor.blackColor;
-
-    self.output = [UITextView new];
-    self.output.translatesAutoresizingMaskIntoConstraints = NO;
-    self.output.editable = NO;
-    self.output.backgroundColor = UIColor.blackColor;
-    self.output.textColor = [UIColor colorWithRed:.65 green:1 blue:.65 alpha:1];
-    self.output.font = [UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightRegular];
-    self.output.text = @"IDTerm — iOS shell terminal\nUses the device /bin/sh inside the app sandbox.\nType 'help' for local commands.\n\n";
-    [self.view addSubview:self.output];
-
-    UILabel *prompt = [UILabel new];
-    prompt.translatesAutoresizingMaskIntoConstraints = NO;
-    prompt.text = @"$"; prompt.textColor = UIColor.greenColor;
-    prompt.font = [UIFont monospacedSystemFontOfSize:16 weight:UIFontWeightBold];
-    [self.view addSubview:prompt];
-
-    self.input = [UITextField new];
-    self.input.translatesAutoresizingMaskIntoConstraints = NO;
-    self.input.backgroundColor = [UIColor colorWithWhite:.08 alpha:1];
-    self.input.textColor = UIColor.whiteColor;
-    self.input.tintColor = UIColor.greenColor;
-    self.input.font = [UIFont monospacedSystemFontOfSize:16 weight:UIFontWeightRegular];
-    self.input.autocorrectionType = UITextAutocorrectionTypeNo;
-    self.input.autocapitalizationType = UITextAutocapitalizationTypeNone;
-    self.input.returnKeyType = UIReturnKeyGo;
-    self.input.delegate = self;
-    [self.view addSubview:self.input];
-
-    UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
-    [NSLayoutConstraint activateConstraints:@[
-        [self.output.topAnchor constraintEqualToAnchor:safe.topAnchor constant:8],
-        [self.output.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:8],
-        [self.output.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-8],
-        [self.output.bottomAnchor constraintEqualToAnchor:self.input.topAnchor constant:-8],
-        [prompt.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:10],
-        [prompt.bottomAnchor constraintEqualToAnchor:self.input.bottomAnchor constant:-8],
-        [prompt.widthAnchor constraintEqualToConstant:20],
-        [self.input.leadingAnchor constraintEqualToAnchor:prompt.trailingAnchor constant:4],
-        [self.input.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-8],
-        [self.input.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor constant:-8],
-        [self.input.heightAnchor constraintEqualToConstant:42]
-    ]];
-}
-- (BOOL)textFieldShouldReturn:(UITextField *)textField {
-    NSString *cmd = textField.text; textField.text = @"";
-    if (!cmd.length) return YES;
-    if ([cmd isEqualToString:@"clear"]) { self.output.text = @""; return YES; }
-    if ([cmd isEqualToString:@"help"]) {
-        self.output.text = [self.output.text stringByAppendingString:@"Built-ins: clear, help\nAll other commands go to /bin/sh -c.\n\n"];
-        return YES;
-    }
-    self.output.text = [self.output.text stringByAppendingFormat:@"$ %@\n", cmd];
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        NSString *result = runShell(cmd);
-        dispatch_async(dispatch_get_main_queue(), ^{
-            self.output.text = [self.output.text stringByAppendingFormat:@"%@\n", result];
-            [self.output scrollRangeToVisible:NSMakeRange(self.output.text.length, 0)];
-        });
-    });
-    return YES;
-}
+-(void)viewDidLoad{[super viewDidLoad];self.cwd=[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject copy];self.view.backgroundColor=UIColor.blackColor;
+self.output=[UITextView new];self.output.translatesAutoresizingMaskIntoConstraints=NO;self.output.editable=NO;self.output.backgroundColor=UIColor.blackColor;self.output.textColor=[UIColor colorWithRed:.65 green:1 blue:.65 alpha:1];self.output.font=[UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightRegular];self.output.text=@"PI Terminal\niOS native sandbox terminal\nType 'help' for commands.\n\n";[self.view addSubview:self.output];
+UILabel*pr=[UILabel new];pr.translatesAutoresizingMaskIntoConstraints=NO;pr.text=@"$";pr.textColor=UIColor.greenColor;pr.font=[UIFont monospacedSystemFontOfSize:16 weight:UIFontWeightBold];[self.view addSubview:pr];
+self.input=[UITextField new];self.input.translatesAutoresizingMaskIntoConstraints=NO;self.input.backgroundColor=[UIColor colorWithWhite:.08 alpha:1];self.input.textColor=UIColor.whiteColor;self.input.tintColor=UIColor.greenColor;self.input.font=[UIFont monospacedSystemFontOfSize:16 weight:UIFontWeightRegular];self.input.autocorrectionType=UITextAutocorrectionTypeNo;self.input.autocapitalizationType=UITextAutocapitalizationTypeNone;self.input.returnKeyType=UIReturnKeyGo;self.input.delegate=self;[self.view addSubview:self.input];
+UILayoutGuide*s=self.view.safeAreaLayoutGuide;[NSLayoutConstraint activateConstraints:@[[self.output.topAnchor constraintEqualToAnchor:s.topAnchor constant:8],[self.output.leadingAnchor constraintEqualToAnchor:s.leadingAnchor constant:8],[self.output.trailingAnchor constraintEqualToAnchor:s.trailingAnchor constant:-8],[self.output.bottomAnchor constraintEqualToAnchor:self.input.topAnchor constant:-8],[pr.leadingAnchor constraintEqualToAnchor:s.leadingAnchor constant:10],[pr.bottomAnchor constraintEqualToAnchor:self.input.bottomAnchor constant:-8],[pr.widthAnchor constraintEqualToConstant:20],[self.input.leadingAnchor constraintEqualToAnchor:pr.trailingAnchor constant:4],[self.input.trailingAnchor constraintEqualToAnchor:s.trailingAnchor constant:-8],[self.input.bottomAnchor constraintEqualToAnchor:s.bottomAnchor constant:-8],[self.input.heightAnchor constraintEqualToConstant:42]]];}
+-(BOOL)textFieldShouldReturn:(UITextField*)t{NSString*cmd=t.text;t.text=@"";if(!cmd.length)return YES;self.output.text=[self.output.text stringByAppendingFormat:@"%@ %@\n",self.cwd,cmd];if([cmd isEqual:@"clear"]){self.output.text=@"";return YES;}__weak typeof(self)w=self;dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{BOOL quit=NO;NSString*cwd=w.cwd;NSString*r=runCommand(cmd,&cwd,&quit);dispatch_async(dispatch_get_main_queue(),^{if(!w)return;w.cwd=cwd;if([r isEqual:@"\f"])w.output.text=@"";else{w.output.text=[w.output.text stringByAppendingFormat:@"%@\n",r];[w.output scrollRangeToVisible:NSMakeRange(w.output.text.length,0)];}if(quit)w.input.enabled=NO;});});return YES;}
 @end
-
-@interface AppDelegate : UIResponder <UIApplicationDelegate>
-@property(nonatomic,strong) UIWindow *window;
-@end
+@interface AppDelegate:UIResponder<UIApplicationDelegate>@property(nonatomic,strong)UIWindow*window;@end
 @implementation AppDelegate
-- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
-    self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
-    self.window.rootViewController = [TerminalVC new];
-    [self.window makeKeyAndVisible];
-    return YES;
-}
-@end
-int main(int argc, char *argv[]) {
-    @autoreleasepool { return UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class])); }
-}
+-(BOOL)application:(UIApplication*)application didFinishLaunchingWithOptions:(NSDictionary*)options{self.window=[[UIWindow alloc]initWithFrame:UIScreen.mainScreen.bounds];self.window.rootViewController=[TerminalVC new];[self.window makeKeyAndVisible];return YES;}@end
+int main(int argc,char*argv[]){@autoreleasepool{return UIApplicationMain(argc,argv,nil,NSStringFromClass([AppDelegate class]));}}
