@@ -1,21 +1,10 @@
 #import <Foundation/Foundation.h>
-#include <spawn.h>
-#include <sys/wait.h>
+#include <sys/utsname.h>
 #include <unistd.h>
 #include <errno.h>
-extern char **environ;
-
-__attribute__((visibility("default")))
-int idterm_execute(const char *command) {
-    if (!command || !*command) return EINVAL;
-    char *const argv[] = {"sh", "-c", (char *)command, NULL};
-    pid_t pid = 0;
-    int rc = posix_spawn(&pid, "/bin/sh", NULL, NULL, argv, environ);
-    if (rc != 0) return rc;
-    int status = 0;
-    if (waitpid(pid, &status, 0) < 0) return errno;
-    if (WIFEXITED(status)) return WEXITSTATUS(status);
-    return 128 + WTERMSIG(status);
-}
-__attribute__((constructor))
-static void idterm_loaded(void) { NSLog(@"[IDTermDylib] loaded; shell bridge ready"); }
+#include <string.h>
+__attribute__((visibility("default"))) const char *idterm_version(void){return "PI Terminal Dylib 2.0";}
+__attribute__((visibility("default"))) int idterm_sandbox_root(char*out,size_t n){if(!out||!n)return EINVAL;const char*p=NSHomeDirectory().UTF8String;size_t l=strlen(p);if(l+1>n)return ENOSPC;memcpy(out,p,l+1);return 0;}
+__attribute__((visibility("default"))) int idterm_file_list(const char*path,char*out,size_t n){if(!out||!n)return EINVAL;NSString*p=path?[NSString stringWithUTF8String:path]:@".";p=[p hasPrefix:@"/"]?p:[NSHomeDirectory() stringByAppendingPathComponent:p];p=[p stringByStandardizingPath];NSString*h=[NSHomeDirectory() stringByStandardizingPath];if(![p isEqual:h]&&![p hasPrefix:[h stringByAppendingString:@"/"]])return EACCES;NSError*e=nil;NSArray*a=[[NSFileManager defaultManager]contentsOfDirectoryAtPath:p error:&e];if(!a)return(int)(e.code?:EIO);NSString*s=[[a sortedArrayUsingSelector:@selector(localizedStandardCompare:)]componentsJoinedByString:@"\n"];NSData*d=[s dataUsingEncoding:NSUTF8StringEncoding];if(d.length+1>n)return ENOSPC;memcpy(out,d.bytes,d.length);out[d.length]=0;return 0;}
+__attribute__((visibility("default"))) int idterm_system_info(char*out,size_t n){if(!out||!n)return EINVAL;struct utsname u;uname(&u);NSString*s=[NSString stringWithFormat:@"kernel=%s\nmachine=%s\nos=%@\nuid=%d gid=%d\nhome=%@\n",u.release,u.machine,NSProcessInfo.processInfo.operatingSystemVersionString,getuid(),getgid(),NSHomeDirectory()];NSData*d=[s dataUsingEncoding:NSUTF8StringEncoding];if(d.length+1>n)return ENOSPC;memcpy(out,d.bytes,d.length);out[d.length]=0;return 0;}
+__attribute__((constructor))static void loaded(void){NSLog(@"[PI Terminal] native sandbox dylib loaded");}
