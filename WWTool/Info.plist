@@ -13,4 +13,5 @@
 <key>UIRequiredDeviceCapabilities</key><array><string>arm64</string></array>
 <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string></array>
 <key>NSLocalNetworkUsageDescription</key><string>WW 玩机工具需要访问局域网，用于网络诊断和与本地工具配合。</string>
+<key>NSBonjourServices</key><array><string>_services._dns-sd._udp</string></array>
 </dict></plist>
