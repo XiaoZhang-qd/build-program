@@ -2,7 +2,6 @@ import UIKit
 import Network
 import UniformTypeIdentifiers
 
-@UIApplicationMain
 final class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
     func application(_ application: UIApplication, didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
@@ -11,6 +10,13 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         window = w
         w.makeKeyAndVisible()
         return true
+    }
+}
+
+@main
+struct WWMain {
+    static func main() {
+        UIApplicationMain(CommandLine.argc, CommandLine.unsafeArgv, nil, NSStringFromClass(AppDelegate.self))
     }
 }
 
@@ -79,7 +85,7 @@ final class DashboardVC: UIViewController {
         系统       \(d.systemName) \(d.systemVersion)
         电池       \(battery)
         温度状态   \(thermal)
-        物理内存   \(bytes(p.physicalMemory))
+        物理内存   \(bytes(Int64(p.physicalMemory)))
         存储空间   \(bytes(free)) 可用 / \(bytes(total)) 总计
         运行时间   \(uptime / 86400)d \((uptime % 86400) / 3600)h \((uptime % 3600) / 60)m
 
@@ -323,13 +329,13 @@ final class ToolsVC: UIViewController {
         let buttons = [
             button("启动 LocalDevVPN", "network.badge.shield.half.filled", #selector(localVPN)),
             button("打开自定义 URL Scheme", "arrow.up.forward.app", #selector(customURL)),
-            button("读取剪贴板", "doc.on.clipboard", #selector(paste)),
+            button("读取剪贴板", "doc.on.clipboard", #selector(readClipboard)),
             button("复制设备诊断", "doc.on.doc", #selector(copyInfo)),
             button("分享 WW 信息", "square.and.arrow.up", #selector(share)),
             button("关于 WW", "info.circle", #selector(about))
         ]
         let s = UIStackView(arrangedSubviews: buttons)
-        s.axis = .vertical
+        s.axis = NSLayoutConstraint.Axis.vertical
         s.spacing = 12
         let card = UIView()
         card.backgroundColor = .secondarySystemGroupedBackground
@@ -380,7 +386,7 @@ final class ToolsVC: UIViewController {
         a.addAction(UIAlertAction(title: "取消", style: .cancel))
         present(a, animated: true)
     }
-    @objc private func paste() { show("剪贴板", UIPasteboard.general.string ?? "没有文本") }
+    @objc private func readClipboard() { show("剪贴板", UIPasteboard.general.string ?? "没有文本") }
     @objc private func copyInfo() {
         UIDevice.current.isBatteryMonitoringEnabled = true
         UIPasteboard.general.string = "WW Tool\nDevice: \(UIDevice.current.model)\nSystem: \(UIDevice.current.systemVersion)\nHome: \(NSHomeDirectory())"
