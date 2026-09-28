@@ -6,8 +6,13 @@
 static NSString *safePath(NSString *path,NSString *cwd){if(!path.length)path=@".";
 NSString*p=[path hasPrefix:@"/"]?path:[cwd stringByAppendingPathComponent:path];p=[p stringByStandardizingPath];NSString*h=[NSHomeDirectory() stringByStandardizingPath];
 return([p isEqual:h]||[p hasPrefix:[h stringByAppendingString:@"/"]])?p:nil;}
-static NSArray *argsFor(NSString*l){NSMutableArray*a=[NSMutableArray array];NSMutableString*c=[NSMutableString string];BOOL q=NO,e=NO;unichar qc=0;
-for(NSUInteger i=0;i<l.length;i++){unichar x=[l characterAtIndex:i];if(e){[c appendFormat:@"%C",x];e=NO;continue;}if(x=='\\'){e=YES;continue;}if(q){if(x==qc)q=NO;else[c appendFormat:@"%C",x];continue;}if(x=='"'||x=='\\''){q=YES;qc=x;continue;}if([[NSCharacterSet whitespaceAndNewlineCharacterSet]characterIsMember:x]){if(c.length){[a addObject:c.copy];[c setString:@""];}}else[c appendFormat:@"%C",x];}if(c.length)[a addObject:c.copy];return a;}
+static NSArray *argsFor(NSString*l){
+    NSMutableArray *a=[NSMutableArray array];
+    for(NSString *part in [l componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]]){
+        if(part.length)[a addObject:part];
+    }
+    return a;
+}
 static NSString *joinArgs(NSArray*a,NSUInteger n){return n>=a.count?@"":[[a subarrayWithRange:NSMakeRange(n,a.count-n)]componentsJoinedByString:@" "];}
 static NSString *runCommand(NSString*l,NSString**cwd,BOOL*quit){NSArray*a=argsFor(l);if(!a.count)return @"";NSString*cmd=a[0];NSFileManager*f=NSFileManager.defaultManager;NSString*b=*cwd;
 if([cmd isEqual:@"help"])return @"Commands: help clear pwd ls cd cat mkdir touch rm cp mv echo uname whoami id env date system bundle httpget pbcopy pbpaste exit\nNative sandbox terminal; no arbitrary /bin/sh.\n";
