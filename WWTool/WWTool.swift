@@ -54,7 +54,7 @@ final class DashboardViewController: UIViewController {
     @objc func refresh() {
         let d = UIDevice.current
         d.isBatteryMonitoringEnabled = true
-        let battery = d.batteryLevel > = 0 ? String(format:"%.0f%%",d.batteryLevel*100) : "未知"
+        let battery = d.batteryLevel >= 0 ? String(format:"%.0f%%",d.batteryLevel*100) : "未知"
         let f = FileManager.default
         let attr = try? f.attributesOfFileSystem(forPath:NSHomeDirectory())
         let total = (attr?[.systemSize] as? NSNumber)?.int64Value ?? 0
@@ -127,7 +127,7 @@ final class NetworkViewController: UIViewController {
                 self?.textView.text = """
                 NETWORK DIAGNOSTICS
                 ────────────────────────
-                状态        \(path.status =  = .satisfied ? "可用" : "不可用")
+                状态        \(path.status == .satisfied ? "可用" : "不可用")
                 接口        \(type)
                 DNS         \(path.supportsDNS ? "支持" : "不支持")
                 IPv4        \(path.supportsIPv4 ? "支持" : "不支持")
@@ -197,7 +197,7 @@ final class FilesViewController: UIViewController, UIDocumentPickerDelegate {
             let access = u.startAccessingSecurityScopedResource()
             defer { if access { u.stopAccessingSecurityScopedResource() } }
             let v = try? u.resourceValues(forKeys:[.fileSizeKey,.isDirectoryKey])
-            out + = "\(v?.isDirectory =  = true ? "DIR " : "FILE")  \(v?.fileSize.map{formatBytes(Int64($0))} ?? "-")  \(u.path)\n"
+            out += "\(v?.isDirectory == true ? "DIR " : "FILE")  \(v?.fileSize.map{formatBytes(Int64($0))} ?? "-")  \(u.path)\n"
         }
         textView.text = out
     }
