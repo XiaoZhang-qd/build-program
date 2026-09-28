@@ -1,0 +1,40 @@
+name: PI Terminal — iOS IPA + Dylib
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'IDTerm/**'
+      - 'IDTermDylib/**'
+      - '.github/workflows/pi.yaml'
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          rm -rf build PI-Terminal.ipa
+          mkdir -p build/Payload/PI-Terminal.app
+          clang -arch arm64 -isysroot "$SDK" -miphoneos-version-min=15.0 -fobjc-arc -fmodules -framework UIKit -framework Foundation IDTerm/main.m -o build/Payload/PI-Terminal.app/PI-Terminal
+          cp IDTerm/Info.plist build/Payload/PI-Terminal.app/Info.plist
+          clang -arch arm64 -isysroot "$SDK" -miphoneos-version-min=15.0 -fobjc-arc -fmodules -dynamiclib -framework Foundation IDTermDylib/IDTermDylib.m -o build/PI-Terminal.dylib -install_name @rpath/PI-Terminal.dylib
+          codesign --force --sign - --timestamp=none build/Payload/PI-Terminal.app
+          codesign --force --sign - --timestamp=none build/PI-Terminal.dylib
+          cd build && zip -qry ../PI-Terminal.ipa Payload && cd ..
+          file PI-Terminal.ipa build/PI-Terminal.dylib
+          lipo -info build/PI-Terminal.dylib
+          unzip -t PI-Terminal.ipa
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pi-v2.0.0-build-${{ github.run_number }}
+          name: PI Terminal v2.0.0 (build ${{ github.run_number }})
+          generate_release_notes: true
+          files: |
+            PI-Terminal.ipa
+            build/PI-Terminal.dylib
