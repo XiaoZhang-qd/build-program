@@ -1,0 +1,33 @@
+name: WW IPA Build
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "WWTool/**"
+      - ".github/workflows/ww.yaml"
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          set -e
+          SDKROOT="$(xcrun --sdk iphoneos --show-sdk-path)"
+          rm -rf build WWTool.ipa
+          mkdir -p build/Payload/WWTool.app
+          xcrun --sdk iphoneos swiftc WWTool/WWTool.swift -target arm64-apple-ios15.0 -sdk "$SDKROOT" -O -framework UIKit -framework Foundation -framework Network -framework UniformTypeIdentifiers -o build/WWTool
+          cp build/WWTool build/Payload/WWTool.app/WWTool
+          cp WWTool/Info.plist build/Payload/WWTool.app/Info.plist
+          chmod 755 build/Payload/WWTool.app/WWTool
+          codesign --force --deep --sign - --timestamp=none build/Payload/WWTool.app
+          codesign --verify --deep --strict build/Payload/WWTool.app
+          cd build && zip -qry ../WWTool.ipa Payload
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ww-$${{ github.run_number }}
+          name: WW Tool
+          files: WWTool.ipa
