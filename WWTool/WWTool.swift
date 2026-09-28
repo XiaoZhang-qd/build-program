@@ -13,13 +13,6 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 }
 
-@main
-struct WWMain {
-    static func main() {
-        UIApplicationMain(CommandLine.argc, CommandLine.unsafeArgv, nil, NSStringFromClass(AppDelegate.self))
-    }
-}
-
 final class MainTabController: UITabBarController {
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -411,3 +404,5 @@ final class ToolsVC: UIViewController {
 func bytes(_ value: Int64) -> String {
     ByteCountFormatter.string(fromByteCount: value, countStyle: .file)
 }
+
+UIApplicationMain(CommandLine.argc, CommandLine.unsafeArgv, nil, NSStringFromClass(AppDelegate.self))
