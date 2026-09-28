@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleDisplayName</key><string>WW 玩机工具</string>
+<key>CFBundleExecutable</key><string>WWTool</string>
+<key>CFBundleIdentifier</key><string>com.xiaozhangqd.wwtool</string>
+<key>CFBundleName</key><string>WWTool</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>1.0.0</string>
+<key>CFBundleVersion</key><string>1</string>
+<key>LSRequiresIPhoneOS</key><true/>
+<key>UILaunchScreen</key><dict/>
+<key>UIRequiredDeviceCapabilities</key><array><string>arm64</string></array>
+<key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string></array>
+<key>NSLocalNetworkUsageDescription</key><string>WW 玩机工具需要访问局域网，用于网络诊断和与本地工具配合。</string>
+</dict></plist>
